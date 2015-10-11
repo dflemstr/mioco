@@ -25,13 +25,15 @@ nix = "*"
 log = "*"
 spin = "*"
 time = "*"
-mio = "0.4.*"
 num_cpus = "*"
 libc = "*"
 thread-scoped = "*"
 bit-vec = "*"
 context = { git = "https://github.com/zonyitoo/context-rs.git" }
 # context = "*"
+
+[dependencies.mio]
+git = "https://github.com/dflemstr/mio.git"
 
 [dev-dependencies]
 env_logger = "*"
