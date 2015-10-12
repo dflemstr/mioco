@@ -34,6 +34,7 @@ context = { git = "https://github.com/zonyitoo/context-rs.git" }
 
 [dependencies.mio]
 git = "https://github.com/dflemstr/mio.git"
+branch = "fd"
 
 [dev-dependencies]
 env_logger = "*"
