@@ -60,6 +60,7 @@ extern crate nix;
 #[macro_use]
 extern crate log;
 extern crate bit_vec;
+extern crate bytes;
 extern crate time;
 extern crate num_cpus;
 
@@ -83,7 +84,6 @@ use std::net::SocketAddr;
 use std::any::Any;
 use std::marker::{PhantomData, Reflect};
 use mio::util::Slab;
-use mio::buf::{Buf, MutBuf};
 
 use std::collections::VecDeque;
 use spin::Mutex;
@@ -91,6 +91,8 @@ use std::sync::{Arc};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bit_vec::BitVec;
+
+use bytes::{Buf, MutBuf};
 
 use time::{SteadyTime, Duration};
 
@@ -289,11 +291,11 @@ where T : mio::Evented+Reflect+'static {
 
     fn register(&self, event_loop : &mut EventLoop<Handler>, token : Token, interest : EventSet) {
         trace!("Evented({}): register", token.as_usize());
-        event_loop.register_opt(
+        event_loop.register(
             self, token,
             interest,
             mio::PollOpt::edge(),
-            ).expect("register_opt failed");
+            ).expect("register failed");
     }
 
     fn reregister(&self, event_loop : &mut EventLoop<Handler>, token : Token, interest : EventSet) {
@@ -1327,20 +1329,20 @@ where T : TryWrite+Reflect+'static {
 impl EventSource<UdpSocket> {
     /// Try to read without blocking
     pub fn try_read<B: MutBuf>(&mut self, buf: &mut B) -> std::io::Result<Option<SocketAddr>> {
-        self.io().recv_from(buf)
+        unsafe { self.io().recv_from(buf.mut_bytes()).map(|o| o.map(|r| r.1)) }
     }
 
     /// Block on read
     pub fn read<B: MutBuf>(&mut self, buf: &mut B) -> std::io::Result<SocketAddr> {
         loop {
-            let res = self.io().recv_from(buf);
+            let res = unsafe { self.io().recv_from(buf.mut_bytes()) };
 
             match res {
                 Ok(None) => {
                     self.block_on(RW::read())
                 },
                 Ok(Some(r))  => {
-                    return Ok(r);
+                    return Ok(r.1);
                 },
                 Err(e) => {
                     return Err(e)
@@ -1351,20 +1353,20 @@ impl EventSource<UdpSocket> {
 
     /// Try to read without blocking
     pub fn try_write<B: Buf>(&mut self, buf: &mut B, target : &SocketAddr) -> std::io::Result<Option<()>> {
-        self.io().send_to(buf, target)
+        self.io().send_to(buf.bytes(), target).map(|o| o.map(|_| ()))
     }
 
     /// Block on write
     pub fn write<B: Buf>(&mut self, buf: &mut B, target : &SocketAddr) -> std::io::Result<()> {
         loop {
-            let res = self.io().send_to(buf, target);
+            let res = self.io().send_to(buf.bytes(), target);
 
             match res {
                 Ok(None) => {
                     self.block_on(RW::write())
                 },
-                Ok(Some(r)) => {
-                    return Ok(r);
+                Ok(Some(_)) => {
+                    return Ok(());
                 },
                 Err(e) => {
                     return Err(e)
@@ -2083,7 +2085,7 @@ impl Mioco {
             let mut event_loops = VecDeque::new();
             let mut senders = Vec::new();
             for _ in 0..self.config.thread_num {
-                let event_loop = EventLoop::configured(self.config.event_loop_config).expect("new EventLoop");
+                let event_loop = EventLoop::configured(self.config.event_loop_config.clone()).expect("new EventLoop");
                 senders.push(event_loop.channel());
                 event_loops.push_back(event_loop);
             }
@@ -2378,7 +2380,7 @@ impl Config {
         Config {
             thread_num: num_cpus::get(),
             scheduler: Box::new(FifoScheduler::new()),
-            event_loop_config: Default::default(),
+            event_loop_config: EventLoopConfig::new(),
             stack_size: 2 * 1024 * 1024,
         }
     }

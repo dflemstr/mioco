@@ -29,6 +29,7 @@ num_cpus = "*"
 libc = "*"
 thread-scoped = "*"
 bit-vec = "*"
+bytes = { git = "https://github.com/carllerche/bytes", rev = "7edb577d0a" }
 context = { git = "https://github.com/zonyitoo/context-rs.git" }
 # context = "*"
 
